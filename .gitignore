@@ -1,0 +1,25 @@
+.venv/
+.local/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.env
+
+# Local credentials and runtime artifacts (never commit actual secrets).
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.db
+*.sqlite
+*.sqlite3
+.coverage
+htmlcov/

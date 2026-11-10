@@ -1,0 +1,64 @@
+# Local HTTP integration only, combined with compose.yml. No VM stack changes.
+services:
+  gateway:
+    environment:
+      GW_DEMO_ENABLED: "false"
+      GW_PORTAL_UPSTREAM: http://portal:8000
+      GW_REGISTRY_URL: http://portal:8000
+      GW_REGISTRY_SERVICE_TOKEN_FILE: /run/secrets/registry_service_token
+      GW_INTERNAL_HOSTS: gateway
+      GW_APP_UPSTREAM: http://app-{slug}:8080
+      GW_ROLES_FILE: /run/config/roles.yml
+      GW_ROLE_VOCABULARY: student,employee,professor,platform-admin,pilot-tester
+    volumes:
+      - ../awp-hka-intranet-portal/dev/roles.yml:/run/config/roles.yml:ro
+    secrets: [registry_service_token]
+    networks: [portal, apps]
+    depends_on:
+      portal:
+        condition: service_started
+
+  portal:
+    build:
+      context: ../awp-hka-intranet-portal
+      dockerfile: Dockerfile.local # Public images for local integration; production Dockerfile unchanged.
+    environment:
+      PORTAL_CONFIG: /run/portal/portal.yml
+      PORTAL_REGISTRY_SERVICE_TOKEN_FILE: /run/secrets/registry_service_token
+    volumes:
+      - ./deployment/portal.yml:/run/portal/portal.yml:ro
+      - ./deployment/state.yml:/run/portal/state.yml:ro
+      - ../app-syncshare-test/manifest.json:/var/lib/portal/manifests/syncshare-test.json:ro
+    secrets: [registry_service_token]
+    networks: [portal]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # No host ports, no Redis, no Keycloak connection, no private signing keys.
+
+  app-syncshare-test:
+    build: ../app-syncshare-test
+    environment:
+      PORTAL_ENV: production
+      PORTAL_DEV: "0"
+      PORTAL_SLUG: syncshare-test
+      PORTAL_BASE_PATH: /apps/syncshare-test
+      PORTAL_API_URL: http://gateway:8080
+      PORTAL_ISSUER: http://localhost:18080/
+    networks: [apps]
+    read_only: true
+    tmpfs: [/tmp, /data]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # No host ports. SDK verifies all application routes and assets.
+
+networks:
+  portal:
+    internal: true
+  apps:
+    internal: true
+
+secrets:
+  registry_service_token:
+    file: ${HKA_REGISTRY_SERVICE_TOKEN_FILE:?Set an external random service-token file}

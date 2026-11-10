@@ -1,0 +1,2 @@
+# Demo-only status source. An unreachable app still fails at gateway forwarding.
+syncshare-test: {status: healthy}

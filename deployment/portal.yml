@@ -1,0 +1,18 @@
+# Isolated local integration: the existing portal/VM configuration is not used.
+env: prod
+auth_mode: gateway
+kontakt: "dem Projektteam"
+manifests_dir: /var/lib/portal/manifests
+state_file: /run/portal/state.yml
+schema_path: /opt/app/schemas/manifest.schema.json
+kit_dist: /opt/app/kit/dist
+role_vocabulary: [student, employee, professor, platform-admin, pilot-tester]
+adapter_scopes: [noten:read, mail:send]
+gateway:
+  issuer: http://localhost:18080/
+  jwks_url: http://gateway:8080/.well-known/jwks.json
+  public_url: http://localhost:18080
+  audience: hka-portal-ui
+registry:
+  refresh_seconds: 5
+  admin_write: false

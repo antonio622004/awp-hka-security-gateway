@@ -1,0 +1,43 @@
+name: Prüfung
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pruefung-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - name: Code holen
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: uv und Python einrichten
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.11.0"
+          python-version: "3.14"
+          enable-cache: true
+      - name: Abhängigkeiten installieren
+        id: sync
+        run: make setup
+      - name: Lint
+        run: uv run ruff check src tests
+      - name: Tests
+        if: ${{ !cancelled() && steps.sync.conclusion == 'success' }}
+        run: make test

@@ -1,0 +1,20 @@
+.git
+.local
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+
+# Exclude local credentials and history from the build context.
+.env
+.env.*
+secrets
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.jks
+**/*.keystore
+**/*.db
+**/*.sqlite
+**/*.sqlite3
