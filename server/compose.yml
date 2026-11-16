@@ -6,10 +6,9 @@
 # Apps gehören nicht hierher: sie kommen per deploy-local in das Netz hka-portal-apps.
 name: hka-local
 
+# Werte aus server/.env: Compose liest die .env im Ordner dieser Datei (Projektordner) für alle eingebundenen
+# Dateien. Kein env_file je include: das müsste existieren, und "config --env-file" ginge ohne server/.env nicht.
 include:
   - path: ../gateway/compose.yml                                          # gateway, gateway-redis, keycloak
-    env_file: .env
   - path: ../../awp-hka-intranet-portal/extras/compose/backend/compose.yml  # backend (Portal)
-    env_file: .env
   - path: ../../awp-hka-adapter/compose.yml                                 # adapter
-    env_file: .env
