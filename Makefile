@@ -1,5 +1,5 @@
 # Same Python workflow as the portal; no UI/SDK build steps.
-.PHONY: setup test keycloak-theme-update
+.PHONY: setup test keycloak-theme-update server-up server-down
 
 setup:
 	uv sync
@@ -12,3 +12,11 @@ test:
 # Aufruf: make keycloak-theme-update THEME_DIST=<Portal-Repository>/sdk/dist/keycloak-theme
 keycloak-theme-update:
 	uv run python tools/keycloak_theme.py update $(THEME_DIST)
+
+# Lokaler Gesamtstart (server/compose.yml): Gateway, Redis, Keycloak, Portal, Adapter.
+# Gateway http://localhost:18080, Keycloak http://localhost:8180
+server-up:
+	docker compose -f server/compose.yml up -d --build
+
+server-down:
+	docker compose -f server/compose.yml down

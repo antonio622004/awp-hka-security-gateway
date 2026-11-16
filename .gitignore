@@ -12,6 +12,7 @@ dist/
 .env.*
 !.env.example
 secrets/
+server/.secrets/
 *.pem
 *.key
 *.p12
