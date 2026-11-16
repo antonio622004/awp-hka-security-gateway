@@ -72,6 +72,7 @@
   ],
   "users": [
     {
+      "id": "88e291bd-6127-4104-bc02-784515fa2e6b",
       "username": "alexandru",
       "enabled": true,
       "emailVerified": true,
@@ -92,6 +93,7 @@
       }
     },
     {
+      "id": "06ed9568-332b-4a16-995e-01c7dc0eb18b",
       "username": "antonio",
       "enabled": true,
       "emailVerified": true,
@@ -112,6 +114,7 @@
       }
     },
     {
+      "id": "c4318a18-bcda-40e4-b20e-d9a851d82a0f",
       "username": "david",
       "enabled": true,
       "emailVerified": true,
@@ -132,6 +135,7 @@
       }
     },
     {
+      "id": "209c4300-eba9-44c7-9e69-461c5398e816",
       "username": "neumann",
       "enabled": true,
       "emailVerified": true,
@@ -152,6 +156,7 @@
       }
     },
     {
+      "id": "3ef18e59-01ab-41cd-a259-6f9ca30dbd3b",
       "username": "max",
       "enabled": true,
       "emailVerified": true,
@@ -172,6 +177,7 @@
       }
     },
     {
+      "id": "915d807b-42f5-4ee7-be8f-0e3e3b6e9280",
       "username": "admin",
       "enabled": true,
       "emailVerified": true,
@@ -195,6 +201,7 @@
       }
     },
     {
+      "id": "1dbbac05-b6f3-469b-9c01-07a8c9bc0aa4",
       "username": "gast",
       "enabled": true,
       "emailVerified": true,
