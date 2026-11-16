@@ -291,7 +291,12 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
             raise HTTPException(403, "Foreign origin")
         if request.headers.get("sec-fetch-site") in ("cross-site", "same-site"):
             raise HTTPException(403, "Foreign origin")
-        if not session.csrf_matches(csrf):
+        if not csrf:
+            # Abmelden-Dialog im Seitenrahmen der Apps (SDK): ohne Token, dafür beide Browsersignale der eigenen
+            # Herkunft. Fehlt eines (alter Browser, curl), kommt die Bestätigungsseite mit Token statt eines Fehlers.
+            if origin != settings.public_url or request.headers.get("sec-fetch-site") != "same-origin":
+                return RedirectResponse("/logout", status_code=303)
+        elif not session.csrf_matches(csrf):
             raise HTTPException(400, "Invalid CSRF token")
         sessions.delete(session.sid)
         # End the local session even if IdP discovery fails during logout.
