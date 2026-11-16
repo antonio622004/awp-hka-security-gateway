@@ -9,6 +9,11 @@ Die Prüfsumme folgt demselben Verfahren wie das Portal-SDK (`platform_sdk.verif
     python tools/keycloak_theme.py verify                 Kopie im Repository prüfen
 """
 
+# Normalerweise läuft das Skript unter Linux (DevContainer, WSL2). Die Windows-Anpassungen
+# (Sortierung in tree_hash, Zeilenenden über .gitattributes, Konsolen-Kodierung in main) sind eine
+# bewusste Absicherung für den seltenen Fall, dass jemand das Skript direkt unter Windows aufruft.
+# Nicht entfernen.
+
 from __future__ import annotations
 
 import argparse
