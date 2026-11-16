@@ -1,0 +1,23 @@
+# Redis für die Sessions des Gateways. Ohne Persistenz: nach einem Neustart sind alle Sessions weg.
+# Wird von gateway/compose.yml eingebunden. Kein Hostport, nur das Gateway erreicht Redis.
+name: hka-gateway-redis
+
+services:
+  gateway-redis:
+    image: redis:8-alpine
+    platform: linux/amd64
+    user: redis
+    command: [redis-server, --save, "", --appendonly, "no"]
+    networks: [sessions]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+networks:
+  sessions:
+    internal: true              # nur Gateway <-> Redis
