@@ -6,6 +6,7 @@ name: hka-gateway
 
 include:
   - ../redis/compose.yml        # gateway-redis und Netz "sessions"; nur das Gateway nutzt Redis
+  - ../keycloak/compose.yml     # keycloak und Netz "identity"; nur das Gateway spricht mit Keycloak
 
 services:
   gateway:
@@ -46,7 +47,7 @@ services:
     volumes:
       - ${GW_ROLES_SOURCE:?Pfad zu roles.yml fehlt}:/run/config/roles.yml:ro
     secrets: [oidc_secret, signing_key, registry_service_token]
-    networks: [default, sessions, portal, apps]
+    networks: [default, sessions, identity, portal, apps]
     depends_on:
       gateway-redis:
         condition: service_healthy
@@ -57,7 +58,7 @@ services:
     restart: unless-stopped
 
 networks:
-  default: {}                   # Keycloak im selben Projekt; ersetzt GW_KEYCLOAK_NETWORK
+  default: {}                   # nur für den Hostport 18080 (an internen Netzen veröffentlicht Docker keine Ports)
   portal:
     internal: true              # Gateway <-> Portal (Dienst backend)
   apps:
