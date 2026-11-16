@@ -1,5 +1,5 @@
 # Same Python workflow as the portal; no UI/SDK build steps.
-.PHONY: setup test keycloak-theme-update server-init server-up server-down
+.PHONY: setup test keycloak-theme-update server-init server-up server-down vm-images vm-check
 
 setup:
 	uv sync
@@ -24,3 +24,23 @@ server-up:
 
 server-down:
 	docker compose -f server/compose.yml down
+
+# Test-VM (vm/compose.yml, docs/vm.md). Auf der VM wird nicht gebaut: Images hier mit den VM-Werten bauen
+# (Tags, gehärtetes Portal-Dockerfile; braucht docker login dhi.io) und als EINE Datei speichern.
+VM_ENV ?= vm/.env.example
+VM_IMAGES ?= build/hka-vm-images.tar.gz
+VM_COMPOSE = docker compose -f vm/compose.yml --env-file $(VM_ENV)
+
+vm-images:
+	$(VM_COMPOSE) build --pull
+	docker pull --platform linux/amd64 redis:8-alpine
+	mkdir -p $(dir $(VM_IMAGES))
+	docker save $$($(VM_COMPOSE) config --images) | gzip > $(VM_IMAGES)
+	@echo "Gespeichert: $(VM_IMAGES)"
+
+# vm/compose.yml mit den Werten aus vm/.env.example prüfen (startet nichts, braucht keine Secrets).
+vm-check:
+	$(VM_COMPOSE) config --quiet
+	@echo "OK: vm/compose.yml mit $(VM_ENV)"
+	$(VM_COMPOSE) config --services
+	$(VM_COMPOSE) config --images
