@@ -42,6 +42,9 @@ class Assertions:
     def mint_app(self, session, app):
         return self.apps.mint(session, app)
 
+    def mint_link(self, session, scope="bwsync:link"):
+        return self.apps.mint_link(session, scope)
+
     def mint(self, session: Session, *, purpose="portal-ui", app_slug=None):
         if purpose == "micro-app" and isinstance(app_slug, str) and re.fullmatch(r"[a-z][a-z0-9-]{2,30}", app_slug):
             if app_slug in (self.portal_audience, "portal", "adapters"):

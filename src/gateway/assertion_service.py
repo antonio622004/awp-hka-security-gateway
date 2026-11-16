@@ -21,6 +21,8 @@ class AppDTO(Protocol):
 logger = logging.getLogger(__name__)
 PORTAL_AUDIENCE: Final = "portal"
 ADAPTERS_AUDIENCE: Final = "adapters"
+# Konten verknüpfen (bwSync Login Flow) darf nur das Portal über das Gateway, nie eine App.
+LINK_SCOPES: Final = frozenset({"bwsync:link"})
 
 
 class AssertionService:
@@ -51,7 +53,8 @@ class AssertionService:
         logger.debug("slug=%s", app.slug)
         now: Final = int(time.time())
         audience: Final = [app.slug, PORTAL_AUDIENCE]
-        if app.adapters:
+        scopes: Final = [scope for scope in app.adapters if scope not in LINK_SCOPES]
+        if scopes:
             audience.append(ADAPTERS_AUDIENCE)
         return self.keys.sign(
             {
@@ -61,7 +64,35 @@ class AssertionService:
                 "roles": sorted(session.roles & self.role_vocabulary),
                 "aud": audience,
                 "azp": app.slug,
-                "scp": list(app.adapters),
+                "scp": scopes,
+                "iat": now,
+                "exp": now + self.cfg.ttl_seconds,
+                "jti": str(uuid.uuid4()),
+                "v": TOKEN_VERSION,
+            }
+        )
+
+    def mint_link(self, session: SessionDTO, scope: str) -> str:
+        """Token für das Gateway selbst, um im Namen des Portals ein Konto zu verknüpfen (nur ``bwsync:link``).
+
+        ``azp`` ist ``portal``: kein App-Slug kann so heißen, und der Adapter verlangt genau diesen Wert.
+        Das Token verlässt das Gateway nur in Richtung Adapter, nie zum Browser.
+
+        :param session: Angemeldete Session
+        :param scope: Einer der ``LINK_SCOPES``
+        :return: Kompaktes JWT, gültig ``ttl_seconds``
+        :rtype: str
+        """
+        if scope not in LINK_SCOPES:
+            raise ValueError("Unknown link scope")
+        now: Final = int(time.time())
+        return self.keys.sign(
+            {
+                "iss": self.cfg.issuer,
+                "sub": session.sub,
+                "aud": [ADAPTERS_AUDIENCE, PORTAL_AUDIENCE],
+                "azp": PORTAL_AUDIENCE,
+                "scp": [scope],
                 "iat": now,
                 "exp": now + self.cfg.ttl_seconds,
                 "jti": str(uuid.uuid4()),
