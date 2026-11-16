@@ -11,5 +11,4 @@ test:
 # Im Portal-Repository vorher: make keycloak-theme-release
 # Aufruf: make keycloak-theme-update THEME_DIST=<Portal-Repository>/sdk/dist/keycloak-theme
 keycloak-theme-update:
-	@test -n "$(THEME_DIST)" || { echo "THEME_DIST fehlt: make keycloak-theme-update THEME_DIST=<Portal>/sdk/dist/keycloak-theme"; exit 1; }
 	uv run python tools/keycloak_theme.py update $(THEME_DIST)

@@ -24,9 +24,17 @@ REQUIRED = ("kit.css", "VERSION", "fonts/OFL.txt")
 
 
 def tree_hash(root: Path) -> str:
-    """SHA-256 über die sortierte Liste (relativer Pfad, Inhalt) aller Dateien außer `SHA256`."""
+    """SHA-256 über die sortierte Liste (relativer Pfad, Inhalt) aller Dateien außer `SHA256`.
+
+    Sortiert wird nach den Pfadteilen als Text, mit Groß-/Kleinschreibung: so ist die Reihenfolge auf
+    Linux, macOS und Windows gleich (Path-Objekte sortiert Windows ohne Groß-/Kleinschreibung).
+    Auf Linux und macOS ergibt das dieselbe Summe wie `platform_sdk.verify_tree.tree_hash`.
+    """
     digest = hashlib.sha256()
-    files = sorted(p for p in root.rglob("*") if p.is_file() and p.name != SUM_FILE_NAME and "__pycache__" not in p.parts)
+    files = sorted(
+        (p for p in root.rglob("*") if p.is_file() and p.name != SUM_FILE_NAME and "__pycache__" not in p.parts),
+        key=lambda p: p.relative_to(root).parts,
+    )
     for path in files:
         digest.update(path.relative_to(root).as_posix().encode() + b"\0")
         digest.update(path.read_bytes() + b"\0")
@@ -55,14 +63,19 @@ def update(source: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Umlaute in Meldungen auch auf Windows-Konsolen mit alter Codepage nicht scheitern lassen
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(errors="backslashreplace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
     sub.add_parser("verify")
     up = sub.add_parser("update")
-    up.add_argument("source", type=Path, help="Ordner sdk/dist/keycloak-theme aus dem Portal-Repository")
+    up.add_argument("source", nargs="?", default="", help="Ordner sdk/dist/keycloak-theme aus dem Portal-Repository")
     args = ap.parse_args(argv)
     if args.command == "update":
-        version = update(args.source.resolve())
+        if not args.source:
+            raise SystemExit("THEME_DIST fehlt: make keycloak-theme-update THEME_DIST=<Portal>/sdk/dist/keycloak-theme")
+        version = update(Path(args.source).resolve())
         print(f"keycloak/theme-kit ist jetzt Version {version} ({tree_hash(TARGET)})")
     else:
         print(f"keycloak/theme-kit Version {check(TARGET)} ist unverändert")
