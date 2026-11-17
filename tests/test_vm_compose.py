@@ -41,6 +41,7 @@ class VmComposeTests(unittest.TestCase):
         self.assertEqual(keycloak['KC_HOSTNAME'], public + '/auth')
         self.assertEqual(keycloak['KC_PROXY_HEADERS'], 'xforwarded')
         self.assertEqual(self.services['adapter']['environment']['BWSYNC_ASSERTION_ISSUER'], public + '/')
+        self.assertEqual(gateway['GW_ADAPTER_URL'], 'http://adapter:8080')  # Konten verknüpfen, Netz apps
         self.assertEqual(self.services['backend']['environment']['PORTAL_CONFIG'], '/opt/app/dev/gateway.vm.yml')
         self.assertEqual(self.services['backend']['build']['dockerfile'], 'Dockerfile')
 

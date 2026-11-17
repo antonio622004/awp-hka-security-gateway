@@ -210,8 +210,9 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
         request.state.app_forwarded = True
         return await proxy.forward(request, slug, assertion)
 
-    # Konten verknüpfen (Portal-Seite "Verbindungen"): GET Status, POST start/poll, DELETE trennen.
-    # JSON-API für fetch() der Portal-Seite: ohne Session 401 statt Weiterleitung zum Login.
+    # Konten verknüpfen (bwSync&Share, z. B. aus SyncShare): GET Status, POST start/poll, DELETE trennen.
+    # JSON-API für fetch() einer Seite auf GW_PUBLIC_URL: ohne Session 401 statt Weiterleitung zum Login.
+    # Die Link-Assertion (scp bwsync:link, azp portal) stellt nur diese Route aus; Apps bekommen den Scope nie.
     async def connect_bwsync(request: Request, sub_path: str):
         if adapter_link is None:
             raise HTTPException(503, "Account linking is not configured")

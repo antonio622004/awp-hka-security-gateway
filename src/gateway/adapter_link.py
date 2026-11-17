@@ -1,4 +1,6 @@
-"""Konten verknüpfen: das Gateway reicht genau vier Aufrufe der Portal-Seite an den Adapter weiter.
+"""Konten verknüpfen: das Gateway reicht genau vier Aufrufe aus dem Browser an den Adapter weiter.
+
+Aufrufer ist das Skript einer App-Seite (SyncShare: „bwSync&Share verbinden“/„Konto trennen“) per fetch().
 
 Der Browser spricht nur mit dem Gateway (/connect/bwsync…). Das Gateway prüft Session und Herkunft, stellt eine
 Link-Assertion aus und ruft den Adapter auf. Zurück geht nur ein festgelegter Satz an Feldern; nichts aus dem

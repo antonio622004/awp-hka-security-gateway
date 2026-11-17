@@ -96,6 +96,33 @@ Keycloak weiter (mit `id_token_hint`, ohne Rückfrage bei Keycloak).
   falscher CSRF-Wert: 400. `GET /logout` zeigt weiterhin die Bestätigungsseite mit
   Formular (Fallback ohne JavaScript), ist aber nicht mehr nötig.
 
+### Konten verknüpfen (bwSync&Share)
+
+Eine App-Seite (SyncShare) verbindet das bwSync&Share-Konto der angemeldeten Person selbst, per `fetch()` an
+das Gateway; das App-Passwort sehen weder Browser noch App:
+
+| Gateway | Adapter | Antwortfelder |
+|---|---|---|
+| `GET /connect/bwsync` | `GET /bwsync/link` | `linked`, `account` |
+| `POST /connect/bwsync/start` | `POST /bwsync/link/start` (Login Flow v2) | `login_url` (nur https), `expires_in` |
+| `POST /connect/bwsync/poll` | `POST /bwsync/link/poll` | `state` (`none`/`pending`/`expired`/`linked`), `account` |
+| `DELETE /connect/bwsync` | `DELETE /bwsync/link` | `linked`, `revoked` (`true`/`false`/`null`) |
+
+- Session nötig (sonst 401, keine Weiterleitung); POST/DELETE nur mit `Origin` gleich `GW_PUBLIC_URL`,
+  nicht `same-site`/`cross-site`. Zum Adapter gehen nur eine Link-Assertion (`scp bwsync:link`, `azp portal`,
+  60 s) und die Request-ID. App-Assertions enthalten `bwsync:link` nie; der Adapter prüft zusätzlich `azp`.
+- Der Adapter speichert das App-Passwort verschlüsselt (SQLite) mit `created_by_flow`. Trennen widerruft nur
+  App-Passwörter, die er selbst per Login Flow erzeugt hat (`revoked` true/false); von Hand eingetragene
+  (`manage_credentials`) bleiben in bwSync bestehen (`revoked: null`), nur die Zuordnung wird gelöscht.
+- Aus, solange `GW_ADAPTER_URL` fehlt (503).
+
+**Bekannte Einschränkung: gleiche Adresse für alle Apps.** Portal und alle Apps laufen unter derselben
+Origin (`GW_PUBLIC_URL`). Die Herkunftsprüfung unterscheidet deshalb nicht, *welche* Seite `/connect/bwsync`
+aufruft: Skript jeder App könnte für die angemeldete Person einen Login Flow starten, den Status samt
+Kontonamen lesen oder das Konto trennen. App-Passwort und Poll-Token bekommt es dabei nie (sie bleiben im
+Adapter), und verbunden wird nur nach Zustimmung der Person bei KIT. Abhilfe erst mit eigenen Origins je App
+(siehe „Browser-Isolation“ unten); bis dahin nur vertrauenswürdige Apps betreiben.
+
 ## Netz und Betrieb
 
 Aufbau, Ports und Start stehen im [README](../README.md) (Abschnitte „Erster Start“

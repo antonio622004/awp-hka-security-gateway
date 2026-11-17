@@ -44,6 +44,14 @@ def linked(env):  # noqa: F811
     assert app.state.adapter_link.client.is_closed
 
 
+def test_unlink_passes_revoked_null_for_manually_entered_password(linked):
+    # Von Hand eingetragenes App-Passwort: der Adapter widerruft es nicht (revoked null); null kommt so an
+    client, _app, cfg, _calls, answers = linked
+    answers[("DELETE", "/bwsync/link")] = (200, {"linked": False, "revoked": None})
+    response = client.delete("/connect/bwsync", headers=same_origin(cfg))
+    assert response.status_code == 200 and response.json() == {"linked": False, "revoked": None}
+
+
 def same_origin(cfg):
     return {"Origin": cfg.public_url, "Sec-Fetch-Site": "same-origin"}
 
