@@ -9,6 +9,7 @@ Browser (Cookies, Header, Body) wird weitergegeben.
 
 from __future__ import annotations
 
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from typing import Any, Final
 
 import httpx
@@ -31,8 +32,11 @@ class AdapterLink:
     def __init__(self, base_url: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self._base = base_url.rstrip("/")
         # Länger als der Adapter (15 s zu bwSync), damit dessen Fehlermeldung ankommt.
+        # Ein Client für alle Personen: nie Cookies speichern oder mitschicken (Jar direkt übergeben, nicht
+        # httpx.Cookies, das in ein Jar ohne diese Regel kopieren würde).
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=3.0), follow_redirects=False,
-                                        trust_env=False, transport=transport)
+                                        trust_env=False, transport=transport,
+                                        cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=[])))
 
     async def aclose(self) -> None:
         await self.client.aclose()

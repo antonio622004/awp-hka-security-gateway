@@ -497,3 +497,22 @@ def test_logout_dialog_without_token_needs_both_same_origin_signals(env):
     assert response.status_code == 303 and urlsplit(response.headers['location']).path.endswith('/logout')
     assert app.state.sessions.get(sid) is None
     assert client.get('/me').status_code == 401
+
+
+def test_oidc_client_keeps_no_cookies():
+    """Ein Client für alle Personen: Cookies des IdP werden weder gespeichert noch mitgeschickt."""
+    seen = []
+
+    def idp(request):
+        seen.append(request.headers.get("cookie"))
+        return httpx.Response(200, json={"ok": len(seen)},
+                              headers={"Set-Cookie": f"AUTH_SESSION_ID=sitzung-{len(seen)}; Path=/"})
+
+    oidc = OidcClient(OidcConfig("http://idp.test/realms/test", "gateway", "test-only", "http://gw.test/cb",
+                                 "http://gw.test/"), transport=httpx.MockTransport(idp))
+    try:
+        assert oidc._get_json("http://idp.test/eins") == {"ok": 1}
+        assert oidc._get_json("http://idp.test/zwei") == {"ok": 2}
+        assert seen == [None, None] and len(oidc._http.cookies) == 0
+    finally:
+        oidc.close()

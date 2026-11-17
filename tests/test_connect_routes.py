@@ -164,3 +164,32 @@ def test_adapter_url_must_be_plain_origin(env, url):  # noqa: F811
     _client, _app, cfg, *_ = env
     with pytest.raises(ConfigError):
         replace(cfg, adapter_url=url)
+
+
+def test_adapter_link_keeps_no_cookies_between_people():
+    """Ein Client für alle Personen: keine Anfrage schickt das Cookie einer anderen mit."""
+    import asyncio
+
+    from gateway.adapter_link import AdapterLink
+
+    seen = []
+
+    def adapter(request):
+        token = request.headers["authorization"]
+        seen.append((token, request.headers.get("cookie")))
+        return httpx.Response(200, json={"linked": True, "account": token[-4:]},
+                              headers={"Set-Cookie": f"sitzung={token[-4:]}; Path=/"})
+
+    async def run():
+        link = AdapterLink(ADAPTER, httpx.MockTransport(adapter))
+        try:
+            first = await link.call("GET", "", "token-anna", "r1")
+            second = await link.call("GET", "", "token-bert", "r2")
+            assert first == (200, {"linked": True, "account": "anna"})
+            assert second == (200, {"linked": True, "account": "bert"})
+            assert len(link.client.cookies) == 0
+        finally:
+            await link.aclose()
+
+    asyncio.run(run())
+    assert seen == [("Bearer token-anna", None), ("Bearer token-bert", None)]
