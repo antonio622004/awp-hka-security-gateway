@@ -14,6 +14,19 @@ Rechner: make vm-check, make vm-images ─► build/hka-vm-images.tar.gz ┐
                                                                      ┘          alte Container stoppen, up --no-build
 ```
 
+## Wichtig vorab
+
+- **VM ohne Internet:** keine Registry, kein `pip`/`npm`, kein `docker build`. Alles kommt als Datei vom eigenen
+  Rechner (Abschnitt 1).
+- **UID 65532:** Das gehärtete Portal-Image läuft als `nonroot` mit UID 65532. Die Ordner
+  `/srv/portal/{manifests,status,registry}` müssen dieser UID gehören (`extras/compose/vm/deploy/README.md` liest
+  die UID aus dem Image). Gateway und Adapter laufen als UID 10001; ihre Secrets sind deshalb `0444` in einem
+  `0700`-Ordner von root.
+- **`/etc/portal/deploy.env`:** `PORTAL_IMAGE` muss auf das Portal-Image aus `vm/.env` zeigen, sonst prüft
+  `portal-deploy` Manifeste mit einem alten Image (Abschnitt 5).
+- **`bwsync-credentials.key` ist nötig:** Ohne ihn startet der Adapter nicht. Einmal anlegen, nie ersetzen, sobald
+  bwSync-Zugänge gespeichert sind (Abschnitt 3).
+
 ## Ordnerstruktur auf der VM
 
 ```text
