@@ -16,7 +16,7 @@ from starlette.exceptions import HTTPException
 
 from gateway.config import AppsConfig
 from gateway.exceptions import UnavailableError
-from test_parity import GATEWAY, source_module
+from source_loader import GATEWAY, source_module
 
 proxy_module = source_module(GATEWAY / 'proxy.py', CookieJar=CookieJar, DefaultCookiePolicy=DefaultCookiePolicy,
                              httpx=httpx, Request=Request, Response=Response, StreamingResponse=StreamingResponse,

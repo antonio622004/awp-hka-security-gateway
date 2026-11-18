@@ -1,0 +1,75 @@
+# Security-Gateway: Anmeldung bei Keycloak (OIDC), Session in Redis, Assertions für Portal und Apps.
+# Aufruf: über server/compose.yml (lokal) oder vm/compose.yml (VM), nicht einzeln.
+# Allein gestartet findet das Gateway Keycloak und Portal nicht (eigenes Projekt).
+# Werte, die sich zwischen lokal und VM unterscheiden, kommen aus der .env von server/ bzw. vm/.
+name: hka-gateway
+
+include:
+  - ../redis/compose.yml        # gateway-redis und Netz "sessions"; nur das Gateway nutzt Redis
+  - ../keycloak/compose.yml     # keycloak und Netz "identity"; nur das Gateway spricht mit Keycloak
+
+services:
+  gateway:
+    image: hka/security-gateway:${GW_IMAGE_TAG:-local}
+    platform: linux/amd64
+    build:
+      context: ..
+      target: final
+    ports:
+      - "127.0.0.1:18080:8080"  # nur Loopback; auf der VM davor nginx mit HTTPS
+    environment:
+      # Öffentliche Adresse und Cookies
+      GW_PUBLIC_URL: ${GW_PUBLIC_URL:-http://localhost:18080}
+      GW_ASSERTION_ISSUER: ${GW_ASSERTION_ISSUER:-${GW_PUBLIC_URL:-http://localhost:18080}/}
+      GW_COOKIE_SECURE: ${GW_COOKIE_SECURE:-false}
+      GW_DEMO_ENABLED: ${GW_DEMO_ENABLED:-false}
+      # Keycloak: issuer = Adresse im Browser, Discovery = intern im selben Compose-Projekt
+      GW_OIDC_ISSUER: ${GW_OIDC_ISSUER:-http://localhost:8180/realms/hka}
+      GW_OIDC_DISCOVERY_URL: ${GW_OIDC_DISCOVERY_URL:-http://keycloak:8080/realms/hka/.well-known/openid-configuration}
+      GW_OIDC_CLIENT_ID: ${GW_OIDC_CLIENT_ID:-portal}
+      # Laufzeiten in Sekunden: 30 min Leerlauf, 8 h höchstens (wie früher im Portal)
+      GW_SESSION_SECONDS: ${GW_SESSION_SECONDS:-28800}
+      GW_SESSION_IDLE_SECONDS: ${GW_SESSION_IDLE_SECONDS:-1800}
+      GW_SESSION_TOUCH_SECONDS: ${GW_SESSION_TOUCH_SECONDS:-60}
+      GW_ASSERTION_SECONDS: ${GW_ASSERTION_SECONDS:-60}
+      # Interne Namen, lokal und auf der VM gleich
+      GW_REDIS_URL: redis://gateway-redis:6379/0
+      GW_PORTAL_UPSTREAM: http://backend:8000
+      GW_REGISTRY_URL: http://backend:8000
+      GW_INTERNAL_HOSTS: gateway            # Host-Header, wenn das Portal die JWKS abholt
+      GW_APP_UPSTREAM: http://app-{slug}:8080
+      GW_ADAPTER_URL: http://adapter:8080   # Konten verknüpfen (/connect/bwsync), Netz "apps"
+      GW_ROLES_FILE: /run/config/roles.yml
+      GW_ROLE_VOCABULARY: student,employee,professor,platform-admin,pilot-tester
+      # Secrets (Dateien im Container)
+      GW_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_secret
+      GW_SIGNING_KEY_FILE: /run/secrets/signing_key
+      GW_REGISTRY_SERVICE_TOKEN_FILE: /run/secrets/registry_service_token
+    volumes:
+      - ${GW_ROLES_SOURCE:?Pfad zu roles.yml fehlt}:/run/config/roles.yml:ro
+    secrets: [oidc_secret, signing_key, registry_service_token]
+    networks: [default, sessions, identity, portal, apps]
+    depends_on:
+      gateway-redis:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+networks:
+  default: {}                   # nur für den Hostport 18080 (an internen Netzen veröffentlicht Docker keine Ports)
+  portal:
+    internal: true              # Gateway <-> Portal (Dienst backend)
+  apps:
+    name: hka-portal-apps       # fester Name: tools/deploy.sh startet App-Container darin (PORTAL_NETZ)
+    internal: true
+
+secrets:
+  oidc_secret:
+    file: ${GW_OIDC_CLIENT_SECRET_SOURCE:?Pfad zum Secret des Keycloak-Clients fehlt}
+  signing_key:
+    file: ${GW_SIGNING_KEY_SOURCE:?Pfad zum Signierschlüssel fehlt}
+  registry_service_token:
+    file: ${HKA_REGISTRY_SERVICE_TOKEN_SOURCE:?Pfad zum Registry-Token fehlt}

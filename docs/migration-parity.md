@@ -1,3 +1,8 @@
+> **Historisch.** Zwischenstand der Migration (November 2026), nicht mehr gepflegt. Erwähnte Dateien wie
+> `compose.yml` (Phase 1), `compose.portal.yml`, `compose.registry.yml`, `compose.vm.yml`, `deployment/` oder
+> `tools/dev.py` gibt es nicht mehr. Aktuell: [README](../README.md), [Gateway–Portal](gateway-portal.md),
+> [VM](vm.md).
+
 **Fortschreibung Entscheidung B:** Proxykorrekturen und App-Routen sind implementiert; aktueller Stand in [proxy-decision-b.md](proxy-decision-b.md). Ältere offene Freigaben unten sind historische Zwischenstände.
 
 **Fortschreibung Entscheidung A:** Die interne Registry-API ist implementiert; aktueller Vertrag und Aktivierungsgrenzen in [internal-registry.md](internal-registry.md). Die nachstehenden offenen Registry-Transportfragen beschreiben den vorherigen Stand. Entscheidung B bleibt offen.

@@ -1,170 +1,166 @@
-"""Executable comparison with portal source, without starting either service.
+"""Abgleich Gateway <-> Portal an der heutigen Grenze, ohne Dienste zu starten.
 
-Only imports are supplied by this harness: the original classes/functions execute
-unchanged. This isolates their behavior from portal UI/package initialization.
-It is not an HTTP, dependency-version, or deployment integration test.
+Früher verglich dieser Test Gateway-Code mit den Login-, Rollen- und Schlüsselklassen des Portals. Diese gibt es
+im Portal nicht mehr: Anmeldung, OIDC, Sessions und Signierschlüssel liegen nur im Gateway, das Portal prüft nur
+noch dessen Assertions (``portal/auth/gateway.py``). Geprüft wird deshalb der Vertrag an dieser Grenze:
+
+* vom Gateway ausgestellte Assertions nimmt der echte Portal-Verifier an (Portal-UI und SDK-Navigation),
+* Weiterleitungsziele nach der Anmeldung gleich wie im Portal (``auth/redirects.py``),
+* Rollenvokabular, Issuer, öffentliche URL und Audience passen in beiden Konfigurationen zusammen,
+* das Portal nimmt keine eigene OIDC-Konfiguration mehr an (keine zweite Anmeldung).
 """
 import ast
-import base64
-from dataclasses import dataclass, field
-import hashlib
+import importlib.util
 import json
-from pathlib import Path
+import re
 import secrets
 import sys
 import tempfile
-import time
-from types import ModuleType, SimpleNamespace
-from typing import Any, Final, Mapping
 import unittest
-import uuid
-from urllib.parse import quote
+from pathlib import Path
+from types import SimpleNamespace
 
-import jwt
+import httpx
+import yaml
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from jwt.algorithms import RSAAlgorithm
 
 from gateway.assertions import Assertions
-from gateway.config import AssertionConfig, ConfigError, OidcConfig
-from gateway.exceptions import (LoginFailedError, LoginRequiredError, ForbiddenError, NotFoundError, UnavailableError)
 from gateway.redirects import sanitize_next
-from gateway.roles import RoleMapper, RoleSource
 from gateway.sessions import Session
-from test_core import MemoryRedis
-from gateway.redis_sessions import RedisLoginStore, RedisSessionStore
 
-PORTAL = Path(__file__).resolve().parents[2] / 'awp-hka-intranet-portal/src/portal'
-GATEWAY = Path(__file__).resolve().parents[1] / 'src/gateway'
+ROOT = Path(__file__).resolve().parents[1]
+PORTAL_REPO = ROOT.parent / 'awp-hka-intranet-portal'
+PORTAL = PORTAL_REPO / 'src/portal'
+ROLE_VOCABULARY = ('student', 'employee', 'professor', 'platform-admin', 'pilot-tester')
 
 
-def source_module(path, **dependencies):
+def portal_module(relative: str):
+    """Ein einzelnes Portal-Modul aus dem Nachbar-Repo laden (ohne das Paket ``portal`` zu importieren)."""
+    path = PORTAL / relative
     if not path.exists():
-        raise unittest.SkipTest(f'Portal comparison source unavailable: {path}')
-    module = ModuleType('_parity_' + path.stem + '_' + str(abs(hash(path))))
-    sys.modules[module.__name__] = module
-    module.__dict__.update({
-        'dataclass': dataclass, 'field': field, 'Any': Any, 'Final': Final, 'Mapping': Mapping,
-        'Path': Path, 'jwt': jwt, 'serialization': serialization, 'rsa': rsa, 'RSAAlgorithm': RSAAlgorithm,
-        'base64': base64, 'hashlib': hashlib, 'json': json, 'time': time, 'uuid': uuid, 'secrets': secrets,
-        'quote': quote, 'logger': SimpleNamespace(debug=lambda *a: None, info=lambda *a: None,
-                                                warning=lambda *a: None),
-        'AssertionConfig': AssertionConfig, 'ConfigError': ConfigError, 'TOKEN_VERSION': 1,
-        'sanitize_next': sanitize_next, 'LoginFailedError': LoginFailedError, 'OidcError': RuntimeError,
-        'LoginRequiredError': LoginRequiredError, 'ForbiddenError': ForbiddenError,
-        'NotFoundError': NotFoundError, 'UnavailableError': UnavailableError, 'AppDTO': lambda app: app,
-    })
-    module.__dict__.update(dependencies)
-    tree = ast.parse(path.read_text())
-    tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom))
-                 or isinstance(node, ast.ImportFrom) and node.module == '__future__']
-    exec(compile(tree, str(path), 'exec'), module.__dict__)
+        raise unittest.SkipTest(f'Portal source unavailable: {path}')
+    name = '_portal_' + relative.replace('/', '_').removesuffix('.py')
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
     return module
 
 
+def portal_config(name: str) -> dict:
+    path = PORTAL_REPO / 'dev' / name
+    if not path.exists():
+        raise unittest.SkipTest(f'Portal config unavailable: {path}')
+    return yaml.safe_load(path.read_text())
+
+
+def gateway_compose_env() -> dict:
+    """Standardwerte aus gateway/compose.yml (``${NAME:-wert}``) und feste Werte."""
+    service = yaml.safe_load((ROOT / 'gateway/compose.yml').read_text())['services']['gateway']['environment']
+    values = {}
+    for key, value in service.items():
+        match = re.fullmatch(r'\$\{[A-Z_]+:-(.*)\}', str(value))
+        values[key] = match.group(1) if match else str(value)
+    return values
+
+
 class PortalParityTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.directory = tempfile.TemporaryDirectory()
+        key = rsa.generate_private_key(65537, 2048)
+        cls.key_path = Path(cls.directory.name) / 'signing-key.pem'
+        cls.key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                   serialization.NoEncryption()))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.directory.cleanup()
+
+    def verifier_for(self, assertions: Assertions, issuer: str):
+        module = portal_module('auth/gateway.py')
+        jwks = json.dumps(assertions.jwks()).encode()
+        http = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, content=jwks)))
+        cfg = SimpleNamespace(issuer=issuer, jwks_url='http://gateway:8080/.well-known/jwks.json',
+                              public_url=issuer.rstrip('/'), audience='hka-portal-ui')
+        return module.GatewayVerifier(cfg, http=http), http
+
+    def test_portal_accepts_gateway_assertions(self):
+        issuer = 'https://gateway.test/'
+        assertions = Assertions(self.key_path, issuer, 'hka-portal-ui', role_vocabulary=ROLE_VOCABULARY)
+        verifier, http = self.verifier_for(assertions, issuer)
+        try:
+            session = Session('sid', 'subject-1', 'Erika Muster', frozenset({'student', 'pilot-tester'}),
+                              secrets.token_urlsafe(16))
+            user = verifier.verify(assertions.mint(session))
+            self.assertEqual((user.sub, user.name, user.roles, user.csrf),
+                             ('subject-1', 'Erika Muster', frozenset({'student', 'pilot-tester'}), session.csrf))
+            # App-Assertions tragen nur Rollen aus dem Vokabular
+            mixed = Session('sid', 'subject-1', 'Erika Muster', frozenset({'student', 'unmapped'}), session.csrf)
+            app = SimpleNamespace(slug='syncshare-test', adapters=('bwsync:read',))
+            navigation = verifier.verify(assertions.mint_app(mixed, app), navigation=True)
+            self.assertEqual(navigation.roles, frozenset({'student'}))
+            # Eine App-Assertion öffnet keine Portal-Seite, eine Portal-Assertion ist keine Navigation
+            with self.assertRaises(Exception):
+                verifier.verify(assertions.mint_app(session, app))
+            with self.assertRaises(Exception):
+                verifier.verify(assertions.mint(session), navigation=True)
+        finally:
+            http.close()
+
+    def test_portal_rejects_assertions_of_another_issuer(self):
+        assertions = Assertions(self.key_path, 'https://other.test/', 'hka-portal-ui', role_vocabulary=ROLE_VOCABULARY)
+        verifier, http = self.verifier_for(assertions, 'https://gateway.test/')
+        try:
+            session = Session('sid', 'subject-1', 'Name', frozenset({'student'}), secrets.token_urlsafe(16))
+            with self.assertRaises(Exception):
+                verifier.verify(assertions.mint(session))
+        finally:
+            http.close()
+
     def test_redirect_contract_matches_portal(self):
-        original = source_module(PORTAL / 'auth/redirects.py')
+        original = portal_module('auth/redirects.py')
         for value in (None, '', '/', '/apps/noten/', '/apps/noten/?x=1', '//evil.test',
                       'https://evil.test', '/admin', '/apps/\\evil', '/apps/\r\nevil', '/' + 'a' * 513):
             with self.subTest(value=value):
                 self.assertEqual(sanitize_next(value), original.sanitize_next(value))
 
-    def test_role_mapping_matches_portal(self):
-        original = source_module(PORTAL / 'auth/roles.py')
-        sources = (RoleSource('affiliation', {'student': 'student', 'faculty': 'professor'}),)
-        grants = {'subject': frozenset({'pilot-tester'})}
-        current = RoleMapper(sources, frozenset({'employee'}), grants)
-        old = original.RoleMapper(sources, frozenset({'employee'}), grants)
-        for subject, claims in [('subject', {}), ('other', {'affiliation': 'student'}),
-                                ('subject', {'affiliation': ['faculty', 'unknown']}), ('other', {})]:
-            self.assertEqual(current.map_roles(subject, claims), old.map_roles(subject, claims))
+    def test_local_configs_fit_together(self):
+        portal = portal_config('gateway.compose.yml')
+        gateway = gateway_compose_env()
+        self.assertEqual(tuple(portal['role_vocabulary']), tuple(gateway['GW_ROLE_VOCABULARY'].split(',')))
+        self.assertEqual(portal['gateway']['public_url'], gateway['GW_PUBLIC_URL'])
+        self.assertEqual(portal['gateway']['issuer'], gateway['GW_PUBLIC_URL'] + '/')  # GW_ASSERTION_ISSUER-Standard
+        self.assertEqual(portal['gateway'].get('audience', 'hka-portal-ui'), 'hka-portal-ui')
+        jwks = httpx.URL(portal['gateway']['jwks_url'])
+        self.assertIn(jwks.host, gateway['GW_INTERNAL_HOSTS'].split(','))
+        self.assertEqual(portal['auth_mode'], 'gateway')
+        self.assertEqual(portal['apps']['upstream'], gateway['GW_APP_UPSTREAM'])
 
-    def test_jwks_and_app_claims_match_portal(self):
-        original_keys = source_module(PORTAL / 'auth/assertion_keys.py')
-        original_service = source_module(PORTAL / 'service/assertion_service.py')
-        with tempfile.TemporaryDirectory() as directory:
-            paths = []
-            for index in range(3):
-                path = Path(directory) / f'{index}.pem'
-                key = rsa.generate_private_key(65537, 2048)
-                path.write_bytes(key.private_bytes(serialization.Encoding.PEM,
-                                                  serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
-                paths.append(path)
-            issuer = 'https://gateway.test/'
-            cfg = AssertionConfig(issuer, 60, *paths)
-            old_keys = original_keys.SigningKeys.load(cfg, dev=False)
-            current = Assertions(paths[0], issuer, 'hka-portal-ui', role_vocabulary=('student',),
-                                 next_key=paths[1], previous_key=paths[2])
-            self.assertEqual(current.jwks(), old_keys.jwks())
-            old_service = original_service.AssertionService(old_keys, cfg, ('student',))
-            user = Session('sid', 'subject', 'Name', frozenset({'student', 'unmapped'}), 'csrf')
-            for scopes in ((), ('grades:read',)):
-                app = SimpleNamespace(slug='noten', adapters=scopes)
-                old = old_keys.verify(old_service.mint(user, app), 'noten')
-                new = current.keys.verify(current.mint_app(user, app), 'noten')
-                for volatile in ('jti', 'iat', 'exp'):
-                    old.pop(volatile)
-                    new.pop(volatile)
-                self.assertEqual(new, old)
-                self.assertEqual(new['roles'], ['student'])
-                self.assertNotIn('token_use', new)
+    def test_vm_portal_config_fits_gateway_vocabulary(self):
+        portal = portal_config('gateway.vm.yml')
+        gateway = gateway_compose_env()
+        self.assertEqual(tuple(portal['role_vocabulary']), tuple(gateway['GW_ROLE_VOCABULARY'].split(',')))
+        self.assertEqual(portal['gateway']['issuer'], portal['gateway']['public_url'] + '/')
+        self.assertTrue(portal['gateway']['public_url'].startswith('https://'))
+        self.assertEqual(portal['auth_mode'], 'gateway')
 
-    def test_login_orchestration_matches_portal(self):
-        original = source_module(PORTAL / 'service/login_service.py')
-        current = source_module(GATEWAY / 'login_service.py')
-        roles = RoleMapper((RoleSource('affiliation', {'student': 'student'}),))
-
-        class Idp:
-            def authorization_url(self, **kwargs):
-                return 'https://idp.test/authorize'
-
-            def claims_for_code(self, **kwargs):
-                return {'sub': 'subject', 'name': 'Name', 'affiliation': 'student'}, 'server-only'
-
-        class PortalSessionAdapter:
-            def __init__(self, store):
-                self.store = store
-
-            def discard(self, sid):
-                self.store.delete(sid)
-
-            def create_for_subject(self, **kwargs):
-                return self.store.create(**kwargs)
-
-        results = []
-        for cls, portal in ((original.LoginService, True), (current.LoginService, False)):
-            redis = MemoryRedis(time.time)
-            sessions = RedisSessionStore(redis, idle_seconds=120, absolute_seconds=300,
-                                         touch_min_interval_seconds=60)
-            login_store = RedisLoginStore(redis, ttl_seconds=600)
-            service = cls(Idp(), login_store, roles, PortalSessionAdapter(sessions) if portal else sessions)
-            old = sessions.create('subject', 'Old', frozenset())
-            started = service.start('/apps/noten/')
-            record = json.loads(redis.get('hka-gateway:v2:oidc:' + started.lid))
-            finished = service.finish(started.lid, 'code', record['state'], None, old.sid)
-            self.assertIsNone(sessions.get(old.sid))
-            with self.assertRaises(LoginFailedError):
-                service.finish(started.lid, 'code', record['state'], None, None)
-            results.append((finished.next, finished.session.sub, finished.session.roles, finished.session.id_token))
-        self.assertEqual(*results)
+    def test_portal_has_no_second_login(self):
+        path = PORTAL / 'core/config.py'
+        if not path.exists():
+            self.skipTest('Sibling portal source is required for comparison')
+        tree = ast.parse(path.read_text())
+        keys = next(ast.literal_eval(node.value) for node in tree.body
+                    if isinstance(node, ast.Assign) and any(getattr(t, 'id', None) == '_KEYS' for t in node.targets))
+        self.assertNotIn('oidc', keys)
+        self.assertFalse((PORTAL / 'service/login_service.py').exists())
+        self.assertFalse((PORTAL / 'auth/assertion_keys.py').exists())
 
     def test_gateway_does_not_duplicate_manifest_authorization(self):
-        self.assertFalse((GATEWAY / 'app_service.py').exists())
-        source = (GATEWAY / 'app.py').read_text()
-        self.assertIn('registry.authorize(slug, assertions.mint(session))', source)
-
-    def test_oidc_defaults_match_portal(self):
-        if not (PORTAL / 'core/config.py').exists():
-            self.skipTest('Sibling portal source is required for comparison')
-        source = (PORTAL / 'core/config.py').read_text()
-        tree = ast.parse(source)
-        cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'OidcConfig')
-        defaults = {node.target.id: ast.literal_eval(node.value) for node in cls.body
-                    if isinstance(node, ast.AnnAssign) and node.value is not None}
-        self.assertEqual(OidcConfig.__dataclass_fields__['id_token_algs'].default, defaults['id_token_algs'])
-        self.assertEqual(OidcConfig.__dataclass_fields__['clock_leeway_seconds'].default,
-                         defaults['clock_leeway_seconds'])
+        gateway = ROOT / 'src/gateway'
+        self.assertFalse((gateway / 'app_service.py').exists())
+        self.assertIn('registry.authorize(slug, assertions.mint(session))', (gateway / 'app.py').read_text())
 
 
 if __name__ == '__main__':

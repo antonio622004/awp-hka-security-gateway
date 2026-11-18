@@ -85,6 +85,7 @@ class Settings:
     apps: AppsConfig | None = None
     portal_upstream: str | None = None
     internal_hosts: tuple[str, ...] = ()
+    adapter_url: str | None = None
 
     def __post_init__(self):
         if bool(self.registry_url) != bool(self.registry_token_file):
@@ -96,6 +97,11 @@ class Settings:
             if (parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password
                     or parts.query or parts.fragment or parts.path not in ("", "/")):
                 raise ConfigError("Registry URL must be an HTTP(S) origin without credentials")
+        if self.adapter_url:
+            parts = urlsplit(self.adapter_url)
+            if (parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password
+                    or parts.query or parts.fragment or parts.path not in ("", "/")):
+                raise ConfigError("Adapter URL must be an HTTP(S) origin without credentials")
         for value in (self.public_url, self.oidc.issuer):
             parts = urlsplit(value)
             if parts.scheme not in ("https", "http") or not parts.hostname or parts.username or parts.password:
@@ -182,5 +188,6 @@ class Settings:
             portal_upstream=os.environ.get("GW_PORTAL_UPSTREAM"),
             internal_hosts=tuple(h.strip() for h in os.environ.get("GW_INTERNAL_HOSTS", "").split(",") if h.strip()),
             registry_url=os.environ.get("GW_REGISTRY_URL"),
+            adapter_url=os.environ.get("GW_ADAPTER_URL"),
             registry_token_file=optional_path("GW_REGISTRY_SERVICE_TOKEN_FILE"),
         )

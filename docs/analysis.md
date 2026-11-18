@@ -1,3 +1,8 @@
+> **Historisch.** Zwischenstand der Migration (November 2026), nicht mehr gepflegt. Erwähnte Dateien wie
+> `compose.yml` (Phase 1), `compose.portal.yml`, `compose.registry.yml`, `compose.vm.yml`, `deployment/` oder
+> `tools/dev.py` gibt es nicht mehr. Aktuell: [README](../README.md), [Gateway–Portal](gateway-portal.md),
+> [VM](vm.md).
+
 **Fortschreibung:** Aktueller Stand und noch offene Freigaben in [migration-parity.md](migration-parity.md). Die folgende Phase-1-Analyse ist die historische Ausgangsbasis.
 
 # Analyse, Wiederverwendung und Abgrenzung

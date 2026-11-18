@@ -35,6 +35,7 @@ from .redirects import login_url
 from .proxy import AppProxy, is_same_origin
 from .config import AppsConfig
 from .assertion_keys import InvalidAssertion
+from .adapter_link import ROUTES as LINK_ROUTES, AdapterLink, AdapterUnavailable
 
 log = logging.getLogger("gateway.access")
 
@@ -43,7 +44,7 @@ def valid_id(value: str) -> bool:
     return re.fullmatch(r"[A-Za-z0-9_-]{43}", value) is not None
 
 
-def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock=time.time, role_mapper=None, registry_client=None, app_transport=None, portal_transport=None):
+def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock=time.time, role_mapper=None, registry_client=None, app_transport=None, portal_transport=None, adapter_transport=None):
     redis = redis_client if redis_client is not None else Redis.from_url(
         settings.redis_url, decode_responses=True, socket_connect_timeout=2, socket_timeout=2,
     )
@@ -67,6 +68,7 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
     portal_proxy = AppProxy(AppsConfig(settings.portal_upstream), portal_transport) if settings.portal_upstream else None
 
     proxy = AppProxy(settings.apps, app_transport) if settings.apps is not None else None
+    adapter_link = AdapterLink(settings.adapter_url, adapter_transport) if settings.adapter_url else None
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -75,6 +77,8 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
             await proxy.aclose()
         if portal_proxy is not None:
             await portal_proxy.aclose()
+        if adapter_link is not None:
+            await adapter_link.aclose()
         if registry is not None and registry_client is None:
             registry.close()
         if oidc_client is None:
@@ -89,6 +93,7 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
     app.state.registry = registry
     app.state.portal_proxy = portal_proxy
     app.state.proxy = proxy
+    app.state.adapter_link = adapter_link
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlsplit(settings.public_url).hostname, *settings.internal_hosts])
 
     @app.middleware("http")
@@ -205,6 +210,44 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
         request.state.app_forwarded = True
         return await proxy.forward(request, slug, assertion)
 
+    # Konten verknüpfen (bwSync&Share, z. B. aus SyncShare): GET Status, POST start/poll, DELETE trennen.
+    # JSON-API für fetch() einer Seite auf GW_PUBLIC_URL: ohne Session 401 statt Weiterleitung zum Login.
+    # Die Link-Assertion (scp bwsync:link, azp portal) stellt nur diese Route aus; Apps bekommen den Scope nie.
+    async def connect_bwsync(request: Request, sub_path: str):
+        if adapter_link is None:
+            raise HTTPException(503, "Account linking is not configured")
+        sid = request.cookies.get(settings.cookie_name)
+        session = await run_in_threadpool(sessions.get, sid) if sid and valid_id(sid) else None
+        if session is None:
+            raise HTTPException(401, "Login required")
+        if request.method != "GET":
+            # Wie bei Portal-Formularen: nur von der eigenen Seite (fetch sendet Origin immer).
+            if (request.headers.get("origin") != settings.public_url or
+                    request.headers.get("sec-fetch-site") in ("cross-site", "same-site")):
+                raise HTTPException(403, "Foreign origin")
+        assertion = await run_in_threadpool(assertions.mint_link, session)
+        try:
+            status, body = await adapter_link.call(request.method, sub_path, assertion, request.state.request_id)
+        except AdapterUnavailable:
+            raise HTTPException(503, "Account linking unavailable") from None
+        return JSONResponse(body, status_code=status, headers={"Cache-Control": "no-store"})
+
+    @app.api_route("/connect/bwsync", methods=["GET", "DELETE"], include_in_schema=False)
+    async def connect_bwsync_root(request: Request):
+        return await connect_bwsync(request, "")
+
+    @app.post("/connect/bwsync/{step}", include_in_schema=False)
+    async def connect_bwsync_step(request: Request, step: str):
+        if ("POST", "/" + step) not in LINK_ROUTES:
+            raise HTTPException(404, "Not found")
+        return await connect_bwsync(request, "/" + step)
+
+    @app.api_route("/connect/{rest:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+                   include_in_schema=False)
+    def connect_unknown(rest: str):
+        # /connect gehört dem Gateway; Unbekanntes nicht ans Portal weiterreichen.
+        raise HTTPException(404, "Not found")
+
     @app.get("/healthz")
     def health():
         return {"status": "ok"}
@@ -291,7 +334,12 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
             raise HTTPException(403, "Foreign origin")
         if request.headers.get("sec-fetch-site") in ("cross-site", "same-site"):
             raise HTTPException(403, "Foreign origin")
-        if not session.csrf_matches(csrf):
+        if not csrf:
+            # Abmelden-Dialog im Seitenrahmen der Apps (SDK): ohne Token, dafür beide Browsersignale der eigenen
+            # Herkunft. Fehlt eines (alter Browser, curl), kommt die Bestätigungsseite mit Token statt eines Fehlers.
+            if origin != settings.public_url or request.headers.get("sec-fetch-site") != "same-origin":
+                return RedirectResponse("/logout", status_code=303)
+        elif not session.csrf_matches(csrf):
             raise HTTPException(400, "Invalid CSRF token")
         sessions.delete(session.sid)
         # End the local session even if IdP discovery fails during logout.

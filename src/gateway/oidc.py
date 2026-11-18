@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import time
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from typing import Any
 from urllib.parse import urlencode
 
@@ -41,14 +42,18 @@ def pkce_challenge(verifier: str) -> str:
 
 class OidcClient:
     """OIDC-Client für einen IdP (Discovery und JWKS werden zehn Minuten gecacht)."""
-    def __init__(self, cfg: OidcConfig, http: httpx.Client | None = None) -> None:
+    def __init__(self, cfg: OidcConfig, http: httpx.Client | None = None,
+                 transport: httpx.BaseTransport | None = None) -> None:
         """Konstruktor mit Einstellungen und HTTP-Client.
 
         :param cfg: Einstellungen des IdP und des Clients
         :param http: HTTP-Client, sonst ein Client mit fünf Sekunden Timeout
+        :param transport: Transport für den eigenen Client statt des Netzwerks, für Tests
         """
         self._cfg = cfg
-        self._http = http or httpx.Client(timeout=TIMEOUT_SECONDS)
+        # Ein Client für alle Personen: nie Cookies speichern oder mitschicken (Jar direkt übergeben).
+        self._http = http or httpx.Client(timeout=TIMEOUT_SECONDS, transport=transport,
+                                          cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=[])))
         self._discovery: tuple[float, dict[str, Any]] | None = None
         self._jwks: tuple[float, PyJWKSet] | None = None
 

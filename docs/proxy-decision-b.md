@@ -1,8 +1,9 @@
 # Entscheidung B: gezielte Proxykorrekturen und App-Routen
 
-> Historischer Migrationsstand. Der aktuelle Gateway fragt jetzt eine Portalentscheidung
-> über `POST /internal/apps/{slug}/authorize` ab. Der lokale Rollenvergleich entfällt.
-> Aktueller Vertrag und Test-/Startanleitung: [Gateway–Portal](gateway-portal.md).
+> **Historisch.** Zwischenstand der Migration (November 2026), nicht mehr gepflegt. Erwähnte Dateien wie
+> `compose.yml` (Phase 1), `compose.portal.yml`, `compose.registry.yml`, `compose.vm.yml`, `deployment/` oder
+> `tools/dev.py` gibt es nicht mehr. Aktuell: [README](../README.md), [Gateway–Portal](gateway-portal.md),
+> [VM](vm.md).
 
 Nur der separate Gateway wurde geändert; das Portal einschließlich der vorherigen
 Registry-API-Erweiterung bleibt gegenüber dem Beginn dieser Aufgabe unverändert.

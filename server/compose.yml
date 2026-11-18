@@ -1,0 +1,14 @@
+# Lokaler Gesamtstart: Security-Gateway (mit Redis und Keycloak), Portal und bwSync-Adapter.
+# Einmalig vorher: make server-init (erzeugt server/.env, Secrets in server/.secrets/ und die Portal-Ordner).
+# Aufruf (im Gateway-Repo):  make server-up   |   make server-down
+# Voraussetzung: awp-hka-intranet-portal und awp-hka-adapter liegen neben diesem Repository.
+# Gateway: http://localhost:18080   Keycloak: http://localhost:8180
+# Apps gehören nicht hierher: sie kommen per deploy-local in das Netz hka-portal-apps.
+name: hka-local
+
+# Werte aus server/.env: Compose liest die .env im Ordner dieser Datei (Projektordner) für alle eingebundenen
+# Dateien. Kein env_file je include: das müsste existieren, und "config --env-file" ginge ohne server/.env nicht.
+include:
+  - path: ../gateway/compose.yml                                          # gateway, gateway-redis, keycloak
+  - path: ../../awp-hka-intranet-portal/extras/compose/backend/compose.yml  # backend (Portal)
+  - path: ../../awp-hka-adapter/compose.yml                                 # adapter

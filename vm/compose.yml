@@ -1,0 +1,15 @@
+# Test-VM iwi-hean-05: derselbe Stack wie lokal (server/compose.yml), hinter nginx mit HTTPS.
+# Gateway, Redis, Keycloak (unter /auth), Portal-Backend und bwSync-Adapter in EINEM Compose-Projekt.
+# Apps laufen daneben im Netz hka-portal-apps (portal-deploy registriert ihre Manifeste).
+#
+# Werte der VM stehen in vm/.env (Vorlage vm/.env.example). Compose liest die .env im Ordner dieser Datei für alle
+# eingebundenen Dateien; deshalb kein env_file je include (so geht "make vm-check" auch ohne vm/.env).
+# Auf der VM wird NICHT gebaut: Images mit "make vm-images" auf dem eigenen Rechner bauen, per scp übertragen,
+# dort "docker load" und "docker compose -f vm/compose.yml up -d --no-build". Ablauf: docs/vm.md.
+# Voraussetzung: awp-hka-intranet-portal und awp-hka-adapter liegen neben diesem Repository (wie lokal).
+name: hka-vm
+
+include:
+  - path: ../gateway/compose.yml                                          # gateway, gateway-redis, keycloak
+  - path: ../../awp-hka-intranet-portal/extras/compose/backend/compose.yml  # backend (Portal)
+  - path: ../../awp-hka-adapter/compose.yml                                 # adapter
