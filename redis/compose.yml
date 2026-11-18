@@ -4,7 +4,9 @@ name: hka-gateway-redis
 
 services:
   gateway-redis:
-    image: redis:8-alpine
+    # Per Digest festgelegt (HKA-57; Index von redis:8-alpine = 8.10.3, 05.11.2026). Auf der VM ein fester Name
+    # (REDIS_IMAGE in vm/.env): docker save verliert Digest-Namen, make vm-images taggt dieses Image dafür um.
+    image: ${REDIS_IMAGE:-redis:8-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3}
     platform: linux/amd64
     user: redis
     command: [redis-server, --save, "", --appendonly, "no"]

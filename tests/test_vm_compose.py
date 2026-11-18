@@ -56,6 +56,12 @@ class VmComposeTests(unittest.TestCase):
         self.assertEqual(roles['source'], '/srv/portal/gateway/roles.yml')
         for name, service in self.services.items():
             self.assertNotRegex(service['image'], r':local$', name)  # auf der VM nur geladene, getaggte Images
+            self.assertNotIn('@', service['image'], name)  # docker save nimmt Digest-Namen nicht mit (HKA-57)
+
+    def test_redis_pinned_by_digest_and_named_for_the_vm(self):
+        local = config(ROOT / 'redis/compose.yml', env={'REDIS_IMAGE': ''})['services']['gateway-redis']['image']
+        self.assertRegex(local, r'^redis:8-alpine@sha256:[0-9a-f]{64}$')
+        self.assertEqual(self.services['gateway-redis']['image'], env_example()['REDIS_IMAGE'])
 
     def test_ports_only_on_loopback_and_networks_segmented(self):
         for name, service in self.services.items():
