@@ -59,7 +59,8 @@ Alle Repos auf dem Stand, der auf die VM soll, nebeneinander in `awp/`. Für das
 cd awp/awp-hka-security-gateway
 make vm-check        # vm/compose.yml mit vm/.env.example prüfen; listet Dienste und Images
 make vm-images       # baut hka/security-gateway, hka/keycloak, hka/portal, hka/adapter mit den Tags aus
-                     # vm/.env.example, holt redis:8-alpine -> build/hka-vm-images.tar.gz
+                     # vm/.env.example, holt Redis per Digest (redis/compose.yml) als REDIS_IMAGE
+                     # -> build/hka-vm-images.tar.gz
 
 # Compose-Dateien für ~/awp auf der VM (im Ordner awp/ aufrufen):
 cd ..
@@ -77,6 +78,28 @@ scp awp-hka-security-gateway/build/hka-vm-images.tar.gz awp-hka-security-gateway
 Neue Version: in `vm/.env.example` die Tags erhöhen (und `PORTAL_IMAGE` in `deploy.env.example` passend), dann
 dieselben Schritte. Alte Images bleiben auf der VM und erlauben den Rückweg.
 
+### Portal und Keycloak aus GHCR statt selbst bauen (HKA-57)
+
+Nach einem Merge auf `main` laden die Pipelines (`images.yml`) das Portal-Image (Repository
+`awp-hka-intranet-portal`) und das Keycloak-Image (dieses Repository) nach GHCR. Die Digests stehen in der
+Zusammenfassung des jeweiligen Laufs. Statt `make vm-images`:
+
+```sh
+make vm-images-ghcr \
+  PORTAL_REF=ghcr.io/alexandru-tatar/portal@sha256:<digest> \
+  KEYCLOAK_REF=ghcr.io/antonio622004/keycloak@sha256:<digest>
+```
+
+Das Ziel zieht beide Images für `linux/amd64` und gibt ihnen die Namen aus `vm/.env.example`
+(`hka/portal:<PORTAL_IMAGE_TAG>`, `hka/keycloak:<KEYCLOAK_IMAGE_TAG>`). Gateway und Adapter baut es wie
+`vm-images`, Redis kommt per Digest. Ergebnis ist dieselbe Datei `build/hka-vm-images.tar.gz`; ab dem Tar der
+Compose-Dateien geht es gleich weiter. Für das Portal-Image braucht es kein `docker login dhi.io`; sind die
+Pakete privat, vorher `docker login ghcr.io` (Token mit `read:packages`).
+
+**Redis:** Der Digest steht nur in `redis/compose.yml`. Auf der VM heißt das Image `REDIS_IMAGE` aus `vm/.env`
+(`hka/redis:…`), weil `docker save` ein per Digest benanntes Image ohne Namen speichert und `up --no-build` es
+dann nicht findet. Neuer Digest: in `redis/compose.yml` ersetzen und `REDIS_IMAGE` in `vm/.env.example` mitändern.
+
 ## 2. Auf der VM: laden und auspacken
 
 ```bash
@@ -85,6 +108,9 @@ sudo docker image ls 'hka/*'                 # Tags wie in vm/.env.example
 install -d -m 0755 ~/awp && tar -xzf ~/hka-vm-files.tar.gz -C ~/awp
 cd ~/awp/awp-hka-security-gateway
 test -e vm/.env || install -m 0600 vm/.env.example vm/.env
+# Ältere vm/.env ohne REDIS_IMAGE (HKA-57): Zeile übernehmen, sonst sucht Compose Redis per Digest
+grep -q '^REDIS_IMAGE=' vm/.env || grep '^REDIS_IMAGE=' vm/.env.example >> vm/.env
+sudo docker compose -f vm/compose.yml config --images | grep '@' && echo "FEHLER: Image per Digest" || echo ok
 ```
 
 Beim ersten Mal das Admin-Passwort von Keycloak in `vm/.env` setzen (ohne es anzuzeigen):

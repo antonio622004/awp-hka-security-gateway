@@ -106,6 +106,7 @@ hat lokale Standardwerte in den Compose-Dateien. Compose liest die `.env` im Ord
 | `make server-init` | lokale Secrets, `server/.env`, Portal-Ordner (einmalig, überschreibt nichts) |
 | `make server-up` / `make server-down` | lokalen Stack bauen und starten / anhalten |
 | `make vm-images` | Images mit VM-Werten bauen und als ein `tar.gz` speichern (siehe [docs/vm.md](docs/vm.md)) |
+| `make vm-images-ghcr PORTAL_REF=… KEYCLOAK_REF=…` | wie `vm-images`, Portal und Keycloak aber fertig aus GHCR (Pipeline, HKA-57) |
 | `make vm-check` | `vm/compose.yml` mit `vm/.env.example` prüfen (`docker compose config`) |
 | `make keycloak-theme-update THEME_DIST=…` | Kit-Kopie für das Keycloak-Login-Theme aus dem Portal übernehmen |
 
