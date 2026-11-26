@@ -221,7 +221,8 @@
   "loginTheme": "hka",
   "internationalizationEnabled": true,
   "supportedLocales": [
-    "de"
+    "de",
+    "en"
   ],
   "defaultLocale": "de"
 }
