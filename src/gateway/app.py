@@ -31,13 +31,17 @@ from .roles import RoleMapper, load_role_mapper
 from .login_service import LoginService
 from .exceptions import LoginFailedError, LoginRequiredError, NotFoundError, ForbiddenError, UnavailableError
 from .registry_client import RegistryClient, RegistryUnavailableError
-from .redirects import login_url
+from .redirects import login_url, sanitize_return
+from .language import COOKIE_MAX_AGE, LANGUAGES, pick_language
 from .proxy import AppProxy, is_same_origin
 from .config import AppsConfig
 from .assertion_keys import InvalidAssertion
 from .adapter_link import ROUTES as LINK_ROUTES, AdapterLink, AdapterUnavailable
 
 log = logging.getLogger("gateway.access")
+
+# Abmelde-Bestätigung ohne CSRF-Token im SDK-Dialog: Überschrift und Knopf je Sprache (HKA-101)
+LOGOUT_TEXTS = {"de": ("Abmelden", "Sitzung beenden"), "en": ("Log out", "End session")}
 
 
 def valid_id(value: str) -> bool:
@@ -180,6 +184,10 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
             raise HTTPException(401, "Login required")
         return value
 
+    def language_of(request) -> str:
+        """Sprache der Anfrage: gültiges Cookie, sonst Accept-Language, sonst Deutsch."""
+        return pick_language(request.cookies.get(settings.lang_cookie), request.headers.get("accept-language"))
+
     def set_cookie(response, name, value, *, max_age=None):
         response.set_cookie(name, value, max_age=max_age, path="/", httponly=True,
                             secure=settings.cookie_secure, samesite="lax")
@@ -208,7 +216,7 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
             raise ForbiddenError(slug)
         assertion = await run_in_threadpool(assertions.mint_app, session, descriptor)
         request.state.app_forwarded = True
-        return await proxy.forward(request, slug, assertion)
+        return await proxy.forward(request, slug, assertion, language=language_of(request))
 
     # Konten verknüpfen (bwSync&Share, z. B. aus SyncShare): GET Status, POST start/poll, DELETE trennen.
     # JSON-API für fetch() einer Seite auf GW_PUBLIC_URL: ohne Session 401 statt Weiterleitung zum Login.
@@ -266,16 +274,25 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
         session = await run_in_threadpool(sessions.get, sid) if sid and valid_id(sid) else None
         if session is None:
             # Use the same OIDC transaction and cookie handling as explicit login.
-            return await run_in_threadpool(login, next="/")
+            return await run_in_threadpool(login, request, next="/")
         if settings.demo_enabled:
             return RedirectResponse("/demo", status_code=302)
         # Forwarding is opt-in. Without an upstream or demo, fail closed rather
         # than guessing a portal address or starting another login flow.
         raise HTTPException(503, "Portal integration is not configured")
 
+    @app.get("/sprache/{code}")
+    def set_language(code: str, next: str | None = None):
+        """Sprache merken und zur vorherigen Seite zurückkehren (Umschalter DE | EN im Portal, HKA-101)."""
+        if code not in LANGUAGES:
+            raise HTTPException(404, "Not found")
+        response = RedirectResponse(sanitize_return(next), status_code=303)
+        set_cookie(response, settings.lang_cookie, code, max_age=COOKIE_MAX_AGE)
+        return response
+
     @app.get("/login")
-    def login(next: str | None = None):
-        started = login_service.start(next)
+    def login(request: Request, next: str | None = None):
+        started = login_service.start(next, language_of(request))
         response = RedirectResponse(started.url, status_code=302)
         set_cookie(response, settings.login_cookie, started.lid, max_age=settings.login_seconds)
         return response
@@ -319,9 +336,12 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
         if session is None:
             return RedirectResponse("/", status_code=302)
         csrf = html.escape(session.csrf, quote=True)
-        return HTMLResponse(f'<h1>Abmelden</h1><form method="post" action="/logout">'
+        lang = language_of(request)
+        title, button = LOGOUT_TEXTS[lang]
+        return HTMLResponse(f'<!doctype html><html lang="{lang}"><meta charset="utf-8"><title>{title}</title>'
+                            f'<h1>{title}</h1><form method="post" action="/logout">'
                             f'<input type="hidden" name="csrf" value="{csrf}">'
-                            '<button type="submit">Sitzung beenden</button></form>')
+                            f'<button type="submit">{button}</button></form>')
 
     @app.post("/logout")
     def logout(request: Request, csrf: str = Form("")):
@@ -383,14 +403,14 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
         if session is None:
             if request.method not in ("GET", "HEAD"):
                 raise HTTPException(401, "Login required")
-            return await run_in_threadpool(login, next=path)
+            return await run_in_threadpool(login, request, next=path)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             if (request.headers.get("origin") != settings.public_url or
                     request.headers.get("sec-fetch-site") in ("cross-site", "same-site")):
                 raise HTTPException(403, "Foreign origin")
         token = await run_in_threadpool(assertions.mint, session)
         request.state.portal_forwarded = True
-        return await portal_proxy.forward(request, "portal", token)
+        return await portal_proxy.forward(request, "portal", token, language=language_of(request))
 
     @app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     async def portal_route(request: Request, path: str):

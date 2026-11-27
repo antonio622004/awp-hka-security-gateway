@@ -72,6 +72,7 @@ class Settings:
     cookie_secure: bool = True
     cookie_name: str = "__Host-hka_gateway_sid"
     login_cookie: str = "__Host-hka_gateway_login"
+    lang_cookie: str | None = None  # Standard: __Host-hka_gateway_lang, ohne Secure hka_gateway_lang
     portal_audience: str = "hka-portal-ui"
     demo_enabled: bool = False
     roles_file: Path | None = None
@@ -88,6 +89,8 @@ class Settings:
     adapter_url: str | None = None
 
     def __post_init__(self):
+        if self.lang_cookie is None:
+            object.__setattr__(self, "lang_cookie", "__Host-hka_gateway_lang" if self.cookie_secure else "hka_gateway_lang")
         if bool(self.registry_url) != bool(self.registry_token_file):
             raise ConfigError("Registry URL and service token file must be configured together")
         if self.portal_upstream and (self.registry_url != self.portal_upstream or not self.registry_token_file):
@@ -114,7 +117,9 @@ class Settings:
             raise ConfigError("Gateway public URL must be an origin without a path")
         if not self.cookie_secure and urlsplit(self.public_url).hostname not in ("localhost", "127.0.0.1", "::1"):
             raise ConfigError("Insecure cookies are only permitted on loopback")
-        if not self.cookie_secure and (self.cookie_name.startswith("__Host-") or self.login_cookie.startswith("__Host-")):
+        if not self.cookie_secure and any(
+            name.startswith("__Host-") for name in (self.cookie_name, self.login_cookie, self.lang_cookie)
+        ):
             raise ConfigError("__Host- cookies require Secure")
         if not 1 <= self.session_seconds <= 86400 or not 1 <= self.assertion_seconds <= 300:
             raise ConfigError("Invalid session/assertion lifetime")
@@ -176,6 +181,7 @@ class Settings:
             cookie_secure=secure,
             cookie_name="__Host-hka_gateway_sid" if secure else "hka_gateway_sid",
             login_cookie="__Host-hka_gateway_login" if secure else "hka_gateway_login",
+            lang_cookie="__Host-hka_gateway_lang" if secure else "hka_gateway_lang",
             portal_audience=os.environ.get("GW_PORTAL_AUDIENCE", "hka-portal-ui"),
             demo_enabled=boolean("GW_DEMO_ENABLED", "false"),
             roles_file=optional_path("GW_ROLES_FILE"),

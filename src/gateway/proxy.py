@@ -61,12 +61,16 @@ class AppProxy:
         """Den HTTP-Client schließen."""
         await self.client.aclose()
 
-    async def forward(self, request: Request, slug: str, assertion: str, *, navigation_token: str | None = None) -> Response:
+    async def forward(
+        self, request: Request, slug: str, assertion: str, *, navigation_token: str | None = None,
+        language: str | None = None,
+    ) -> Response:
         """Anfrage unverändert im Pfad an die App weitergeben und die Antwort durchreichen.
 
         :param request: Anfrage der Person
         :param slug: Slug der App
         :param assertion: Token, ersetzt jede mitgeschickte Kopfzeile ``X-Portal-Assertion``
+        :param language: ``de`` oder ``en``; ersetzt ``Accept-Language`` (die Wahl der Person steht in einem Cookie, das nicht weitergegeben wird)
         :return: Antwort der App ohne ``Set-Cookie``
         :rtype: Response
         :raises HTTPException: 413 bei zu großem Body, 504 bei Zeitüberschreitung, 502 bei anderen Fehlern
@@ -75,7 +79,7 @@ class AppProxy:
         base: Final = self.cfg.upstream_for(slug)
         target: Final = base + request.url.path + (f"?{request.url.query}" if request.url.query else "")
         body: Final = await self._read_body(request)
-        headers = self._request_headers(request, assertion)
+        headers = self._request_headers(request, assertion, language)
         if navigation_token is not None:
             headers.append(("Authorization", "Bearer " + navigation_token))
         started: Final = time.perf_counter()
@@ -124,15 +128,19 @@ class AppProxy:
             chunks.append(chunk)
         return b"".join(chunks)
 
-    def _request_headers(self, request: Request, assertion: str) -> list[tuple[str, str]]:
+    def _request_headers(self, request: Request, assertion: str, language: str | None = None) -> list[tuple[str, str]]:
         """Kopfzeilen für die App: ohne Cookie und fremdes Token, mit echtem Token.
 
         :param request: Anfrage der Person
         :param assertion: Token des Portals
+        :param language: ``de`` oder ``en`` statt der mitgeschickten ``Accept-Language``, ``None`` lässt sie unverändert
         :return: Kopfzeilen
         :rtype: list[tuple[str, str]]
         """
         headers = [(k, v) for k, v in request.headers.items() if k.lower() not in DROPPED_REQUEST]
+        if language is not None:
+            headers = [(k, v) for k, v in headers if k.lower() != "accept-language"]
+            headers.append(("Accept-Language", language))
         headers += [
             ("X-Portal-Assertion", assertion),
             ("X-Request-Id", request.state.request_id),

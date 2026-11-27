@@ -60,17 +60,18 @@ class OidcClient:
     def close(self) -> None:
         self._http.close()
 
-    def authorization_url(self, *, state: str, nonce: str, verifier: str) -> str:
+    def authorization_url(self, *, state: str, nonce: str, verifier: str, ui_locales: str | None = None) -> str:
         """Adresse beim IdP für den Start der Anmeldung (Authorization Code mit PKCE).
 
         :param state: Zufälliger State
         :param nonce: Zufällige Nonce
         :param verifier: PKCE-Verifier; gesendet wird die Challenge
+        :param ui_locales: Sprache der Anmeldeseite (``de`` oder ``en``), ``None`` lässt dem IdP die Wahl
         :return: Adresse des Authorization-Endpoints mit Query
         :rtype: str
         :raises OidcError: Falls die Discovery fehlschlägt
         """
-        query = urlencode({
+        params = {
             "response_type": "code",
             "client_id": self._cfg.client_id,
             "redirect_uri": self._cfg.redirect_uri,
@@ -79,7 +80,10 @@ class OidcClient:
             "nonce": nonce,
             "code_challenge": pkce_challenge(verifier),
             "code_challenge_method": "S256",
-        })
+        }
+        if ui_locales:
+            params["ui_locales"] = ui_locales
+        query = urlencode(params)
         return f"{self._discover()['authorization_endpoint']}?{query}"
 
     def claims_for_code(self, *, code: str, verifier: str, nonce: str) -> tuple[dict[str, Any], str]:

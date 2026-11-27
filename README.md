@@ -148,9 +148,25 @@ Standardwerte aus `gateway/compose.yml` (lokal); die VM überschreibt sie in `vm
 | `GW_PORTAL_UPSTREAM`, `GW_REGISTRY_URL`, `GW_APP_UPSTREAM` | Portal und Apps intern | `http://backend:8000`, `http://app-{slug}:8080` |
 | `*_SOURCE` in `.env` | Pfade der Secret-Dateien und von `roles.yml` auf dem Host | – |
 
-Produktions-Cookies heißen `__Host-hka_gateway_sid` / `__Host-hka_gateway_login` (Secure, HttpOnly,
-SameSite=Lax, Path=/). Signierschlüssel werden nie spontan erzeugt; ohne lesbaren Schlüssel startet der
+Produktions-Cookies heißen `__Host-hka_gateway_sid` / `__Host-hka_gateway_login` / `__Host-hka_gateway_lang`
+(Secure, HttpOnly, SameSite=Lax, Path=/). Signierschlüssel werden nie spontan erzeugt; ohne lesbaren Schlüssel startet der
 Dienst nicht. Zugriffslogs enthalten nur Request-ID, Methode, Pfad und Status.
+
+## Sprache (Deutsch und Englisch, HKA-101)
+
+Das Gateway entfernt Cookies auf dem Weg zu Portal und Apps. Darum speichert es die Sprachwahl selbst:
+
+- `GET /sprache/<de|en>?next=<Pfad>` setzt das Cookie `hka_gateway_lang` (ein Jahr) und leitet mit 303 zum Pfad zurück
+  (`redirects.sanitize_return`: nur Pfade auf diesem Server, sonst `/`). Ein anderer Code ergibt 404. Der Umschalter im Portal
+  ruft diese Adresse (Portal-Konfiguration `language_switch: true`).
+- Die Sprache einer Anfrage ist das Cookie, sonst die erste unterstützte Sprache aus `Accept-Language` (`en-GB` zählt als `en`),
+  sonst Deutsch (`language.pick_language`).
+- Portal und Apps bekommen sie als `Accept-Language: de` oder `en`; die mitgeschickte Kopfzeile wird ersetzt. Das SDK der Apps
+  und das Portal lesen nur diese Kopfzeile. Das Menü des SDK (`GET /nav` mit Bearer-Token) bleibt unverändert, das SDK schickt die
+  Sprache selbst mit.
+- Beim Login schickt das Gateway `ui_locales=<de|en>` an Keycloak. Realm (`supportedLocales`) und Theme `hka`
+  (`locales=de,en`, `messages_en.properties`) haben beide Sprachen.
+- Die Bestätigungsseite von `GET /logout` gibt es in beiden Sprachen.
 
 ## Assertionvertrag
 

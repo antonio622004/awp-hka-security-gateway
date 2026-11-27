@@ -67,6 +67,20 @@ class ProxyTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('set-cookie', response.headers)
         self.assertEqual(list(proxy.client.cookies.jar), [])
 
+    async def test_language_replaces_accept_language(self):
+        seen = []
+        def upstream(req):
+            seen.append(req)
+            return httpx.Response(200, content=b'body')
+        proxy = self.proxy(upstream)
+        await consume(await proxy.forward(request(headers=[(b'accept-language', b'fr-FR,fr;q=0.9')]), 'noten', 'token',
+                                          language='en'))
+        self.assertEqual(seen[0].headers.get_list('accept-language'), ['en'])
+        await consume(await proxy.forward(request(headers=[(b'accept-language', b'fr-FR')]), 'noten', 'token'))
+        self.assertEqual(seen[1].headers.get_list('accept-language'), ['fr-FR'])  # ohne language unverändert
+        await consume(await proxy.forward(request(), 'noten', 'token', language='de'))
+        self.assertEqual(seen[2].headers.get_list('accept-language'), ['de'])
+
     async def test_no_cookie_storage_or_reuse_for_next_user_on_same_upstream(self):
         seen = []
         def upstream(req):

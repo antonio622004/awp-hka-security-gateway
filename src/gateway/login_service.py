@@ -48,10 +48,11 @@ class LoginService:
         self.role_mapper: RoleMapper = role_mapper
         self.sessions: SessionStore = sessions
 
-    def start(self, next_path: str | None) -> StartedLogin:
+    def start(self, next_path: str | None, language: str | None = None) -> StartedLogin:
         """Login-Transaktion anlegen und die Adresse beim IdP liefern.
 
         :param next_path: Gewünschter Zielpfad, wird gegen Open Redirects geprüft
+        :param language: Sprache der Anmeldeseite (``de`` oder ``en``)
         :return: Redirect-Ziel und Transaktions-ID
         :rtype: StartedLogin
         :raises LoginFailedError: Falls der IdP nicht erreichbar ist
@@ -62,7 +63,9 @@ class LoginService:
         verifier: Final = secrets.token_urlsafe(32)
         target: Final = sanitize_next(next_path)
         try:
-            url: Final = self.oidc.authorization_url(state=state, nonce=nonce, verifier=verifier)
+            url: Final = self.oidc.authorization_url(
+                state=state, nonce=nonce, verifier=verifier, ui_locales=language
+            )
         except OidcError as exc:
             raise self._failed(f"discovery: {exc}") from exc
         self.login_store.put(lid, {"state": state, "nonce": nonce, "verifier": verifier, "next": target})
