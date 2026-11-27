@@ -177,6 +177,30 @@
       }
     },
     {
+      "id": "ef933876-f4a1-4ac1-8a78-b34af076fffe",
+      "username": "entwickler",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Eva",
+      "lastName": "Entwicklerin",
+      "email": "entwickler@portal.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "entwickler",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "eduPersonAffiliation": [
+          "employee"
+        ],
+        "eduPersonEntitlement": [
+          "urn:hka:portal:maintainer"
+        ]
+      }
+    },
+    {
       "id": "915d807b-42f5-4ee7-be8f-0e3e3b6e9280",
       "username": "admin",
       "enabled": true,
