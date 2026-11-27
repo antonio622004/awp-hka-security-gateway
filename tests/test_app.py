@@ -207,7 +207,8 @@ def test_migrated_logout_anonymous_and_allow_header(env):
     client = env[0]
     response = client.get("/logout")
     assert response.status_code == 302 and response.headers["location"] == "/"
-    assert client.post("/logout", data={"csrf": "invalid"}).status_code == 400
+    response = client.post("/logout", data={"csrf": "invalid"})
+    assert response.status_code == 303 and response.headers["location"] == "/"
     response = client.post("/me")
     assert response.status_code == 405
     assert "GET" in response.headers["allow"]
@@ -516,3 +517,17 @@ def test_oidc_client_keeps_no_cookies():
         assert seen == [None, None] and len(oidc._http.cookies) == 0
     finally:
         oidc.close()
+
+
+def test_logout_without_session_redirects_home_and_clears_cookie(env):
+    """HKA-118 AK1: alter Tab oder schon abgemeldet -> 303 auf /, Cookie gelöscht, kein 400."""
+    client, cfg = env[0], env[2]
+    for headers in ({}, {"Origin": cfg.public_url, "Sec-Fetch-Site": "same-origin"}):
+        client.cookies.set(cfg.cookie_name, "x" * 43)
+        response = client.post("/logout", data={"csrf": "egal"}, headers=headers)
+        assert response.status_code == 303 and response.headers["location"] == "/"
+        assert f'{cfg.cookie_name}=""' in response.headers["set-cookie"] and "Max-Age=0" in response.headers["set-cookie"]
+    client.cookies.clear()
+    response = client.post("/logout")
+    assert response.status_code == 303 and response.headers["location"] == "/"
+    assert "set-cookie" not in response.headers

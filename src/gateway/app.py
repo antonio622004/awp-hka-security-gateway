@@ -328,7 +328,12 @@ def create_app(settings: Settings, *, redis_client=None, oidc_client=None, clock
         sid = request.cookies.get(settings.cookie_name)
         session = sessions.get(sid) if sid and valid_id(sid) else None
         if session is None:
-            raise HTTPException(400, "Login required")
+            # Alter Tab oder schon abgemeldet (HKA-118): kein Fehler, sondern zur Startseite, die zur Anmeldung führt.
+            response = RedirectResponse("/", status_code=303)
+            if sid is not None:
+                response.delete_cookie(settings.cookie_name, path="/", secure=settings.cookie_secure,
+                                       httponly=True, samesite="lax")
+            return response
         origin = request.headers.get("origin")
         if origin is not None and origin != settings.public_url:
             raise HTTPException(403, "Foreign origin")
