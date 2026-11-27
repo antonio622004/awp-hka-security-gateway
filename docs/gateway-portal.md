@@ -95,6 +95,8 @@ Keycloak weiter (mit `id_token_hint`, ohne Rückfrage bei Keycloak).
 - Fremde oder `null`-Origin sowie `same-site`/`cross-site`: 403; ein mitgeschickter
   falscher CSRF-Wert: 400. `GET /logout` zeigt weiterhin die Bestätigungsseite mit
   Formular (Fallback ohne JavaScript), ist aber nicht mehr nötig.
+- Ohne Sitzung (alter Tab, schon abgemeldet): `POST /logout` antwortet mit 303 auf `/` und löscht das
+  Cookie, `GET /logout` mit 302 auf `/`. Von dort führt das Portal zur Anmeldung (HKA-118).
 
 ### Konten verknüpfen (bwSync&Share)
 
