@@ -41,7 +41,7 @@ Voraussetzungen: Linux, WSL2 oder DevContainer; Docker mit Compose v2; [uv](http
 
    Keycloak braucht beim ersten Start 20–40 Sekunden. Dann **http://localhost:18080** öffnen und mit einer
    Testperson aus `keycloak/hka-realm.json` anmelden (nur lokal; Studierende z. B. `alexandru`, `antonio`,
-   Verwaltung `admin`). Keycloak-Konsole: http://localhost:8180 (Benutzer `admin`, Passwort in `server/.env`).
+   Verwaltung `admin`, Dokumentation bearbeiten `entwickler`). Keycloak-Konsole: http://localhost:8180 (Benutzer `admin`, Passwort in `server/.env`).
 
 4. Eine App in das Netz `hka-portal-apps` bringen und im Portal registrieren:
 

@@ -40,7 +40,7 @@ services:
       GW_APP_UPSTREAM: http://app-{slug}:8080
       GW_ADAPTER_URL: http://adapter:8080   # Konten verknüpfen (/connect/bwsync), Netz "apps"
       GW_ROLES_FILE: /run/config/roles.yml
-      GW_ROLE_VOCABULARY: student,employee,professor,platform-admin,pilot-tester
+      GW_ROLE_VOCABULARY: student,employee,professor,platform-admin,maintainer,pilot-tester
       # Secrets (Dateien im Container)
       GW_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_secret
       GW_SIGNING_KEY_FILE: /run/secrets/signing_key
